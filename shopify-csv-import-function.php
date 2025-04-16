@@ -1,4 +1,5 @@
 <?php
+
 // Add Shopify Importer page to admin menu
 add_action('admin_menu', 'shopify_importer_menu');
 function shopify_importer_menu() {
@@ -13,7 +14,7 @@ function shopify_importer_menu() {
     );
 }
 
-// Render the importer page with upload form
+// Render the importer page with upload form and product table
 function render_shopify_importer_page() {
     ?>
     <div class="wrap">
@@ -28,21 +29,37 @@ function render_shopify_importer_page() {
             <?php wp_nonce_field('shopify_import_nonce', 'shopify_import_nonce'); ?>
             <input type="submit" name="import_csv" class="button button-primary" value="Import Products">
         </form>
+        <h2>Imported Products</h2>
         <?php process_shopify_csv_upload(); ?>
+        <?php display_imported_products_table(); ?>
     </div>
     <?php
 }
 
-// Add CSS styling for the importer page
+// Add CSS styling for the importer page and table
 add_action('admin_enqueue_scripts', 'shopify_importer_styles');
 function shopify_importer_styles($hook) {
     if ($hook !== 'toplevel_page_shopify-importer') {
         return;
     }
     wp_add_inline_style('wp-admin', '
-        .wrap { max-width: 800px; margin: 20px auto; }
+        .wrap { max-width: 1000px; margin: 20px auto; }
         .form-table th { width: 200px; }
         .notice { margin-top: 20px; }
+        .imported-products-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
+        .imported-products-table th, .imported-products-table td { border: 1px solid #e1e1e1; padding: 12px; text-align: left; vertical-align: middle; }
+        .imported-products-table th { background-color: #0073aa; color: #fff; font-weight: 600; }
+        .imported-products-table tr:nth-child(even) { background-color: #f7f7f7; }
+        .imported-products-table tr:hover { background-color: #e5f3ff; }
+        .imported-products-table td { color: #333; }
+        .pagination { margin-top: 20px; text-align: center; }
+        .pagination a, .pagination span { display: inline-block; padding: 8px 12px; margin: 0 5px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #0073aa; }
+        .pagination a:hover { background-color: #0073aa; color: #fff; border-color: #0073aa; }
+        .pagination .current { background-color: #0073aa; color: #fff; border-color: #0073aa; font-weight: bold; }
+        @media screen and (max-width: 782px) {
+            .imported-products-table th, .imported-products-table td { display: block; width: 100%; box-sizing: border-box; }
+            .imported-products-table tr { margin-bottom: 10px; }
+        }
     ');
 }
 
@@ -126,8 +143,6 @@ function import_products_from_csv($file) {
         if (!in_array($column, $headers)) {
             error_log('Shopify Importer: Missing required column - ' . $column);
             echo '<div class="notice notice-error"><p>Missing required column: ' . esc_html($column) . '</p></div>';
-            fclose($handle);
-            return;
         }
     }
 
@@ -248,10 +263,16 @@ function create_woocommerce_product($product_data) {
         }
     }
 
-    // Save product
-    $product->save();
-    error_log('Shopify Importer: Product created' . ($sku ? ' with SKU ' . $sku : ' without SKU') . ' as draft');
-    return 'created';
+    // Save product and mark as CSV-imported
+    $product_id = $product->save();
+    if ($product_id) {
+        update_post_meta($product_id, '_imported_via_csv', 'yes');
+        error_log('Shopify Importer: Product created' . ($sku ? ' with SKU ' . $sku : ' without SKU') . ' as draft (ID: ' . $product_id . ')');
+        return 'created';
+    }
+
+    error_log('Shopify Importer: Failed to save product ' . $title);
+    return 'skipped';
 }
 
 // Get term IDs for categories/tags
@@ -259,6 +280,9 @@ function get_term_ids($terms, $taxonomy) {
     $term_ids = [];
     foreach ($terms as $term_name) {
         $term_name = trim($term_name);
+        if (empty($term_name)) {
+            continue;
+        }
         $term = get_term_by('name', $term_name, $taxonomy);
         if (!$term) {
             $term = wp_insert_term($term_name, $taxonomy);
@@ -284,5 +308,72 @@ function upload_image($image_url) {
         return false;
     }
     return $image_id;
+}
+
+// Display paginated table of imported products
+function display_imported_products_table() {
+    $paged = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
+    $posts_per_page = 10;
+
+    $args = [
+        'post_type' => 'product',
+        'post_status' => ['publish', 'draft', 'pending', 'private'],
+        'posts_per_page' => $posts_per_page,
+        'paged' => $paged,
+        'meta_query' => [
+            [
+                'key' => '_imported_via_csv',
+                'value' => 'yes',
+                'compare' => '=',
+            ],
+        ],
+    ];
+
+    $query = new WP_Query($args);
+
+    if ($query->have_posts()) {
+        ?>
+        <table class="imported-products-table">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Stock</th>
+                    <th>Category</th>
+                    <th>Created Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php while ($query->have_posts()) : $query->the_post(); ?>
+                    <?php
+                    $product = wc_get_product(get_the_ID());
+                    $stock = $product->get_stock_quantity() !== null ? $product->get_stock_quantity() : ($product->is_in_stock() ? 'In stock' : 'Out of stock');
+                    $categories = wp_get_post_terms(get_the_ID(), 'product_cat', ['fields' => 'names']);
+                    $category = !empty($categories) ? implode(', ', $categories) : '-';
+                    $created_date = get_the_date('Y-m-d H:i:s');
+                    ?>
+                    <tr>
+                        <td><?php echo esc_html($product->get_name()); ?></td>
+                        <td><?php echo esc_html($stock); ?></td>
+                        <td><?php echo esc_html($category); ?></td>
+                        <td><?php echo esc_html($created_date); ?></td>
+                    </tr>
+                <?php endwhile; ?>
+            </tbody>
+        </table>
+        <div class="pagination">
+            <?php
+            echo paginate_links([
+                'total' => $query->max_num_pages,
+                'current' => $paged,
+                'base' => esc_url(add_query_arg('paged', '%#%')),
+                'format' => '?paged=%#%',
+            ]);
+            ?>
+        </div>
+        <?php
+        wp_reset_postdata();
+    } else {
+        echo '<p>No products imported yet.</p>';
+    }
 }
 ?>
