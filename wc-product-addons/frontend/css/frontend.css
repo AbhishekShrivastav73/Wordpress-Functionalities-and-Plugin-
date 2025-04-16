@@ -1,0 +1,49 @@
+.wc-product-addons {
+    margin: 20px 0;
+    padding: 15px;
+    border: 1px solid #ddd;
+    background: #f9f9f9;
+}
+.wc-product-addons h4 {
+    margin: 0 0 10px;
+    font-size: 16px;
+    font-weight: bold;
+}
+.addon-group {
+    margin-bottom: 20px;
+}
+.addon-item {
+    margin-bottom: 10px;
+}
+.addon-item label {
+    margin-right: 15px;
+    display: inline-block;
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+.addon-item input[type="checkbox"],
+.addon-item input[type="radio"] {
+    margin-right: 8px;
+    vertical-align: middle;
+}
+.addon-item select {
+    width: 250px;
+    padding: 6px;
+    font-size: 14px;
+    border-radius: 3px;
+}
+.addon-data {
+    display: none;
+}
+.addon-total {
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px solid #ddd;
+}
+.addon-total strong {
+    font-size: 16px;
+}
+.order_details .item_addons {
+    font-size: 12px;
+    color: #555;
+}
