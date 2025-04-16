@@ -338,6 +338,7 @@ function display_imported_products_table() {
                 <tr>
                     <th>Title</th>
                     <th>Stock</th>
+					<th>SKU</th>
                     <th>Category</th>
                     <th>Created Date</th>
                 </tr>
@@ -349,11 +350,13 @@ function display_imported_products_table() {
                     $stock = $product->get_stock_quantity() !== null ? $product->get_stock_quantity() : ($product->is_in_stock() ? 'In stock' : 'Out of stock');
                     $categories = wp_get_post_terms(get_the_ID(), 'product_cat', ['fields' => 'names']);
                     $category = !empty($categories) ? implode(', ', $categories) : '-';
+                    $sku = $product->get_sku();
                     $created_date = get_the_date('Y-m-d H:i:s');
                     ?>
                     <tr>
                         <td><?php echo esc_html($product->get_name()); ?></td>
                         <td><?php echo esc_html($stock); ?></td>
+						<td><?php echo esc_html($sku); ?></td>
                         <td><?php echo esc_html($category); ?></td>
                         <td><?php echo esc_html($created_date); ?></td>
                     </tr>
